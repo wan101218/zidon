@@ -1,0 +1,11 @@
+{
+  "kind": "announce",
+  "slug": "announce/land-announcement-v0-2-0",
+  "created_at": "2026-10-11T00:00:00+0800",
+  "status": "pending",
+  "locale": "zh",
+  "version": "v0.2.0",
+  "platform": "generic",
+  "engine": "human",
+  "note": "首发公告草稿：请修改后执行 python -m promoter approve announce/land-announcement-v0-2-0 --push"
+}
