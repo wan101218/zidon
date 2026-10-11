@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>zidon — 本地写草稿，云端自动宣传</title>
+<meta name="description" content="在低配电脑上生成宣传草稿，人工审批后由 GitHub Actions 自动发布到包管理器、社交平台与搜索引擎，全程合法合规。">
+<meta property="og:title" content="zidon — 本地写草稿，云端自动宣传">
+<meta property="og:description" content="本地 AI 写草稿 + 人工审批 + GitHub Actions 自动发布。零第三方依赖，默认 dry-run。">
+<meta property="og:type" content="website">
+<style>
+  :root{
+    --bg:#ffffff; --fg:#1f2328; --muted:#59636e; --line:#d8dee4; --soft:#f6f8fa;
+    --accent:#1f883d; --warn:#9a6700; --mono:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#0d1117;--fg:#e6edf3;--muted:#9198a1;--line:#30363d;--soft:#161b22;--accent:#3fb950;--warn:#d29922}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:64px 20px 96px}
+  .kicker{font:600 13px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  h1{font-size:clamp(1.9rem,4.5vw,2.8rem);line-height:1.2;margin:16px 0 14px;letter-spacing:-.02em}
+  .lead{font-size:1.1rem;color:var(--muted);max-width:62ch;margin:0 0 28px}
+  .cta{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .btn{display:inline-block;padding:9px 16px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;
+    background:var(--accent);color:#fff}
+  .btn.ghost{background:var(--soft);color:var(--fg);border:1px solid var(--line)}
+  .install{margin-top:8px;display:inline-block;font:14px/1.5 var(--mono);background:var(--soft);
+    border:1px solid var(--line);border-radius:6px;padding:8px 12px}
+  h2{font-size:1.3rem;margin:56px 0 8px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .flow{margin:24px 0 0;padding:0;list-style:none;counter-reset:s}
+  .flow li{counter-increment:s;position:relative;padding:14px 0 14px 46px;border-bottom:1px dashed var(--line)}
+  .flow li::before{content:counter(s);position:absolute;left:0;top:16px;width:28px;height:28px;border-radius:50%;
+    background:var(--soft);border:1px solid var(--line);font:600 13px/28px var(--mono);text-align:center;color:var(--muted)}
+  .flow b{display:block}
+  .flow span{color:var(--muted);font-size:.95rem}
+  .who{font:600 12px/1 var(--mono);color:var(--muted);margin-left:6px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:22px}
+  .card{border:1px solid var(--line);border-radius:8px;padding:16px 18px;background:var(--soft)}
+  .card b{display:block;margin-bottom:6px}
+  .card p{margin:0;color:var(--muted);font-size:.95rem}
+  table{border-collapse:collapse;width:100%;margin-top:18px;font-size:.95rem}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--soft)}
+  code{font:0.9em var(--mono);background:var(--soft);padding:.15em .35em;border-radius:4px}
+  .note{border-left:3px solid var(--warn);padding:10px 16px;margin:22px 0;background:var(--soft);border-radius:0 6px 6px 0}
+  .note p{margin:0;font-size:.95rem;color:var(--muted)}
+  footer{margin-top:72px;border-top:1px solid var(--line);padding-top:16px;color:var(--muted);font-size:14px}
+  a{color:inherit}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="kicker">local draft · human approve · cloud publish</p>
+  <h1>在低配电脑上写草稿，<br>让 GitHub 云端替你发布</h1>
+  <p class="lead">
+    zidon 把你手工做的发版宣传（Release Notes、社交动态、Awesome 提交、issue 回复）拆成两半：
+    本地小模型写草稿，云端 Actions 负责发布。本机几乎不耗性能，账号密码也从不落到本地脚本里。
+  </p>
+
+  <div class="cta">
+    <a class="btn" href="https://github.com/yourname/zidon">查看仓库</a>
+    <a class="btn ghost" href="https://github.com/yourname/zidon/blob/main/README.md">阅读文档</a>
+    <a class="btn ghost" href="https://github.com/yourname/zidon/releases">更新记录</a>
+  </div>
+  <span class="install">git clone https://github.com/yourname/zidon &amp;&amp; python -m promoter doctor</span>
+
+  <h2>整条链路</h2>
+  <ol class="flow">
+    <li><b>本地生成草稿 <span class="who">你</span></b>
+      <span>Ollama + 小模型只写文字：发版说明、社交文案、Awesome 条目前、issue 回复。没装模型会回退到模板，链路照样通。</span></li>
+    <li><b>人工审批 <span class="who">你 · 约 1 分钟</span></b>
+      <span><code>promoter review</code> 逐条过：批准 / 改一句 / 丢弃。未审批的草稿被 .gitignore 拦住，发不出去。</span></li>
+    <li><b>git push <span class="who">你</span></b>
+      <span>只有 <code>content/approved/</code> 会被推到云端。</span></li>
+    <li><b>云端自动发布 <span class="who">GitHub Actions</span></b>
+      <span>校验内容 → 建 Release → 发社交动态 → 部署落地页 → 提交 IndexNow → 发布到 PyPI / npm / Docker Hub。</span></li>
+    <li><b>外部世界发现你 <span class="who">自动</span></b>
+      <span>搜索引擎收录、包管理器上架、社交平台触达，最终都回到同一个落地页。</span></li>
+    <li><b>issue 回复闭环 <span class="who">你 · 点确认</span></b>
+      <span>本地拉取 issue 写回复草稿，你确认后才发出——不做自动秒回，避免答错和刷屏。</span></li>
+  </ol>
+
+  <div class="note">
+    <p><b>为什么所有对外内容都要人工点一下？</b> 自动秒回和自动群发看起来省事，但答错一次的成本远高于花一分钟确认。
+    这套设计把「机器快」用在写草稿上，把「责任」留给人。</p>
+  </div>
+
+  <h2>它刻意不做的事</h2>
+  <div class="grid">
+    <div class="card"><b>不碰你的密码</b><p>本地脚本不直连任何社交账号；token 只存在 GitHub Secrets 里，云端调官方 API。</p></div>
+    <div class="card"><b>不骚扰别人</b><p>没有自动关注、自动私信、群发评论功能，配置里这些开关被写死为关闭，CI 会拦截篡改。</p></div>
+    <div class="card"><b>不刷屏</b><p>同一平台两次发帖有最小间隔，每日有上限；同一内容靠指纹去重，重跑工作流也不会重复发。</p></div>
+    <div class="card"><b>不编造数据</b><p>提示词明确禁止虚构功能、用户数和他人评价；超长文案在生成时就截断，CI 里再断言一次。</p></div>
+  </div>
+
+  <h2>你要做的三件事</h2>
+  <table>
+    <tr><th>时机</th><th>动作</th><th>耗时</th></tr>
+    <tr><td>准备发版</td><td><code>promoter gen --kind release</code> 然后 <code>promoter review</code></td><td>约 1 分钟</td></tr>
+    <tr><td>发布</td><td><code>promoter approve &lt;slug&gt; --push</code> 或推 tag</td><td>10 秒</td></tr>
+    <tr><td>有人提 issue</td><td><code>promoter inbox pull</code> → 审批 → <code>inbox push --send</code></td><td>约 1 分钟</td></tr>
+  </table>
+
+  <footer>
+    零第三方依赖 · Python 标准库 · 默认 dry-run ·
+    <a href="./sitemap.xml">sitemap</a>
+  </footer>
+
+</div>
+</body>
+</html>
