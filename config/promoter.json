@@ -1,0 +1,40 @@
+{
+  "project": {
+    "name": "zidon",
+    "repo": "wan101218/zidon",
+    "one_liner": "本地 AI 写草稿 → 人工审批 → 云端自动发布的宣传流水线",
+    "homepage": "https://wan101218.github.io/zidon/",
+    "install": "git clone https://github.com/wan101218/zidon && python -m promoter doctor",
+    "keywords": ["automation", "release", "promotion", "github-actions", "changelog"],
+    "license": "MIT"
+  },
+  "llm": {
+    "engine": "template",
+    "fallback_to_template": true,
+    "model": "qwen3:0.6b",
+    "host": "http://127.0.0.1:11434",
+    "timeout": 180,
+    "num_predict": 512,
+    "temperature": 0.6,
+    "keep_alive": "5m"
+  },
+  "social": {
+    "dry_run": true,
+    "enabled_platforms": [],
+    "locales": ["zh"],
+    "min_interval_minutes": 60,
+    "max_posts_per_day": 3,
+    "append_url": true
+  },
+  "compliance": {
+    "human_approval_required": true,
+    "allow_auto_follow": false,
+    "allow_auto_dm": false,
+    "allow_scraping": false,
+    "allow_mass_comment": false,
+    "allow_social_posting": false,
+    "allow_public_reply": false,
+    "allow_awesome_pr": false,
+    "note": "仅用于生成与发布自己的 Release Notes / 更新日志与文档站点。已显式关闭所有对外社交发布（Mastodon/Bluesky/Telegram/Discord）、issue 公开回复、Awesome 列表 PR 提交。不自动关注/私信/群发评论；不伪造数据与用户评价。"
+  }
+}
