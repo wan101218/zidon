@@ -1,0 +1,13 @@
+# 本地草稿：未审批内容绝不进仓库（防止误发、泄露未发布计划）
+drafts/
+
+# 本地运行产物
+.state/
+publish/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# 别忘了：content/approved/ 与 content/state/ 要提交，云端靠它们工作
