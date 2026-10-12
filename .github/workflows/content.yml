@@ -1,0 +1,75 @@
+name: content-publish
+
+# 触发条件：人工把内容推到 content/approved/（例如本地执行 `promoter approve --push`）。
+# 注意：drafts/social 与 drafts/announce 的自动触发路径已移除 —— 本项目不再向外部社交平台发布内容。
+on:
+  push:
+    branches: [main]
+    paths:
+      - "content/approved/**"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "只发布这个版本（留空=发布所有已批准内容）"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+# 同一时间只跑一个，避免并发导致重复发帖
+concurrency:
+  group: content-publish
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 1) 内容校验：未审批内容、超长文案、合规红线一律拦住
+      - name: 校验内容
+        run: python scripts/lint_content.py
+
+      # 2) 把审批结果提交回去（内容本体 + 状态文件）
+      - name: 提交审批结果
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then echo "没有变更"; exit 0; fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A content
+          git commit -m "content: approve ${promoted:-0} draft(s) [skip ci]"
+          git push
+
+      # 3) 对外社交发布已禁用
+      # 原步骤会向 Mastodon / Bluesky / Telegram / Discord 发布内容，已按项目所有者要求移除。
+      # 原因：所有者明确要求不进行任何对外社交发布（社恐考量）。
+      # config/promoter.json 中 social.enabled_platforms 已置空，
+      # compliance.allow_social_posting 等开关均为 false。
+      # 本工作流现在只做「内容校验 + 审批入库」，不再向任何外部平台发送内容。
+      - name: 外发已禁用（仅校验与入库）
+        run: |
+          echo "社交平台发布已在配置中禁用（social.enabled_platforms = []）"
+          echo "本工作流仅执行内容校验与审批结果提交，不向外发送任何内容。"
+
+      # 4) 把幂等状态提交回去（dry-run 产物 publish/ 不存在时跳过，避免 git add 报错）
+      - name: 记录发布状态
+        if: always()
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then echo "没有状态变更"; exit 0; fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A content/state
+          [ -d publish ] && git add -A publish || true
+          git commit -m "chore: record publish state [skip ci]"
+          git push
