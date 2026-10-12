@@ -378,6 +378,19 @@ def cmd_sitelinks(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- release
+
+def cmd_release(args) -> int:
+    """本地发布 GitHub Release（release.yml 的等价实现，只走 api.github.com）。"""
+    from . import release as rel_mod
+    return rel_mod.run_release(
+        args.version,
+        draft=getattr(args, "draft", False),
+        skip_guard=getattr(args, "skip_guard", False),
+        no_asset=getattr(args, "no_asset", False),
+    )
+
+
 # ---------------------------------------------------------------- parser
 
 def build_parser() -> argparse.ArgumentParser:
@@ -456,6 +469,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--write", action="store_true", help="同时写 IndexNow payload")
     s.add_argument("--extra", action="append", help="额外页面路径")
     s.set_defaults(func=cmd_sitelinks)
+
+    rl = sub.add_parser("release", help="本地发布 GitHub Release（release.yml 的等价实现，走 API）")
+    rl.add_argument("--version", required=True, help="版本号，如 v0.2.1（不带 v 会自动补）")
+    rl.add_argument("--draft", action="store_true", help="建为草稿 Release")
+    rl.add_argument("--skip-guard", action="store_true", help="跳过 CHANGELOG 守卫（不推荐）")
+    rl.add_argument("--no-asset", action="store_true", help="不打包上传源码包")
+    rl.set_defaults(func=cmd_release)
 
     return p
 
