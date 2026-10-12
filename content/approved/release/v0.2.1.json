@@ -1,0 +1,33 @@
+{
+  "project": "zidon",
+  "url": "https://github.com/wan101218/zidon",
+  "one_liner": "本地 AI 写草稿 → 人工审批 → 云端自动发布的宣传流水线",
+  "install": "git clone https://github.com/wan101218/zidon && python -m promoter doctor",
+  "keywords": [
+    "automation",
+    "release",
+    "promotion",
+    "github-actions",
+    "changelog"
+  ],
+  "license": "MIT",
+  "version": "v0.2.1",
+  "summary": "修复 CHANGELOG 守卫并收敛 README",
+  "highlights": [
+    "CHANGELOG 守卫提前拦截缺版本段落",
+    "README 不再宣称自动发社交动态"
+  ],
+  "changes": [
+    "- docs: README 收敛为「只做 Release Notes + 文档站点」，并修复 CHANGELOG 守卫",
+    "- feat: zidon 宣传发布流水线（去掉一切对外社交发布）"
+  ],
+  "engine": "template",
+  "note": "",
+  "template_used": true,
+  "kind": "release",
+  "slug": "release/v0.2.1",
+  "created_at": "2026-10-12T12:22:01+0800",
+  "status": "approved",
+  "approved_at": "2026-10-12T12:22:10+0800",
+  "hash": "d7a6fda587f63f87"
+}
