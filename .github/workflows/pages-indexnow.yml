@@ -1,0 +1,75 @@
+name: pages-indexnow
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "README.md"
+      - "content/**"
+      - ".github/workflows/pages-indexnow.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+
+jobs:
+  # 仓库里还没有 site/ 时，用 README 自动生成一个最小落地页（README 就是转化页，别浪费）
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 组装站点（有 site/ 用它，否则用 README 生成）并生成 sitemap/robots/IndexNow key
+        env:
+          PROMOTER_ROOT: ${{ github.workspace }}
+        run: python scripts/make_site.py --root . --out _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - uses: actions/upload-artifact@v4
+        with:
+          name: indexnow
+          path: indexnow.json
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
+
+  # IndexNow：Bing / Yandex 等支持「主动推送 URL」，是最快且完全合规的收录方式。
+  # 注意：Google 与 Bing 都已停止支持 sitemap ping，所以这里不再做 ping，只做 IndexNow。
+  indexnow:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: indexnow
+      - name: 提交 IndexNow
+        run: |
+          if [ ! -f indexnow.json ]; then echo "没有 indexnow.json，跳过"; exit 0; fi
+          code=$(curl -s -o /tmp/out.txt -w "%{http_code}" -X POST "https://api.indexnow.org/indexnow" \
+            -H "Content-Type: application/json; charset=utf-8" --data-binary @indexnow.json || echo "000")
+          echo "IndexNow HTTP $code"; cat /tmp/out.txt || true
+          case "$code" in
+            200|202) echo "已提交，等搜索引擎抓取" ;;
+            403) echo "::warning::IndexNow 403：key 文件未能在站点根目录访问到（检查 ${key}.txt 是否已部署）" ;;
+            *) echo "::warning::IndexNow 返回 $code，稍后重试即可" ;;
+          esac
