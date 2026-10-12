@@ -216,8 +216,87 @@ def record_post(state: dict, platform: str, digest: str, slug: str, detail: str 
     )
 
 
+def detect_repo(root: Path) -> str:
+    """从 git remote 解析出 owner/repo。"""
+    r = subprocess.run(["git", "remote", "get-url", "origin"], cwd=str(root),
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    url = (r.stdout or "").strip()
+    m = re.search(r"github\.com[:/]([^/]+/[^/\s]+?)(?:\.git)?$", url)
+    if not m:
+        raise RuntimeError(f"无法从 remote 解析 owner/repo：{url!r}")
+    return m.group(1)
+
+
+def api_push(paths: list[Path], message: str, branch: str = "main") -> int:
+    """用 GitHub Contents API 推送文件。
+
+    存在的理由：部分网络会把 git-over-HTTPS 的 POST 直接重置
+    （Recv failure: Connection was reset），而 api.github.com 正常。
+    此时 git push 永远失败，但 API 可以推上去。
+
+    token 取环境变量 GITHUB_TOKEN 或 ZIDON_GITHUB_TOKEN（需 Contents: Read and write）。
+    """
+    import base64
+    import json as _json
+    import os as _os
+    import urllib.error
+    import urllib.request
+
+    token = _os.environ.get("GITHUB_TOKEN") or _os.environ.get("ZIDON_GITHUB_TOKEN")
+    if not token:
+        raise RuntimeError("缺少 GITHUB_TOKEN / ZIDON_GITHUB_TOKEN，无法走 API 推送")
+
+    root = repo_root()
+    repo = _os.environ.get("ZIDON_REPO") or detect_repo(root)
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "zidon-promoter",
+        "Content-Type": "application/json",
+    }
+
+    def call(method: str, url: str, body: dict | None = None):
+        data = _json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                raw = resp.read().decode()
+                return resp.status, (_json.loads(raw) if raw else {})
+        except urllib.error.HTTPError as e:
+            raw = e.read().decode()
+            try:
+                return e.code, _json.loads(raw)
+            except Exception:  # noqa: BLE001
+                return e.code, {"message": raw[:200]}
+
+    pushed = 0
+    base = f"https://api.github.com/repos/{repo}/contents"
+    for p in paths:
+        if not p.exists() or not p.is_file():
+            continue
+        rel = p.relative_to(root).as_posix()
+        code, cur = call("GET", f"{base}/{rel}?ref={branch}")
+        body = {
+            "message": message,
+            "content": base64.b64encode(p.read_bytes()).decode(),
+            "branch": branch,
+        }
+        if code == 200 and cur.get("sha"):
+            body["sha"] = cur["sha"]
+        code, res = call("PUT", f"{base}/{rel}", body)
+        if code not in (200, 201):
+            raise RuntimeError(f"API 推送 {rel} 失败：HTTP {code} {res.get('message')}")
+        pushed += 1
+    return pushed
+
+
 def git_add_commit_push(paths: list[Path], message: str, push: bool = True) -> str:
-    """在本地做一次最小的 add/commit/push。"""
+    """在本地做一次最小的 add/commit/push。
+
+    push 阶段：先试 git push；若因网络（git-over-HTTPS 被重置）失败，
+    自动退回 GitHub Contents API，保证「审批 → 上传 → 触发云端」在受限网络下也能走通。
+    """
     root = repo_root()
     rel = [str(p.relative_to(root)) for p in paths if p.exists()]
 
@@ -235,12 +314,28 @@ def git_add_commit_push(paths: list[Path], message: str, push: bool = True) -> s
     status = run(["status", "--porcelain", "--", *rel]) if rel else ""
     if not status:
         return "没有需要提交的变更"
+
+    # 仓库若没配 git 身份，commit 会直接失败（Author identity unknown）。
+    # 只在缺失时补一份仓库本地身份，不动全局配置。
+    ident = subprocess.run(["git", "config", "user.email"], cwd=str(root),
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if ident.returncode != 0 or not (ident.stdout or "").strip():
+        run(["config", "user.email", "zidon-bot@users.noreply.github.com"])
+        run(["config", "user.name", "zidon-bot"])
+
     run(["commit", "-m", message])
     info = run(["log", "-1", "--format=%h %s"])
-    if push:
+    if not push:
+        return info
+    try:
         run(["push"])
         return f"{info}（已 push）"
-    return info
+    except RuntimeError as exc:
+        try:
+            n = api_push([root / r for r in rel], message)
+        except Exception as exc2:  # noqa: BLE001
+            raise RuntimeError(f"git push 失败（{exc}）；API 兜底也失败：{exc2}") from exc2
+        return f"{info}（git push 失败，已改用 GitHub API 推送 {n} 个文件）"
 
 
 def copy_tree(src: Path, dst: Path) -> None:
