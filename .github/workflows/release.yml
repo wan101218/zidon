@@ -1,0 +1,197 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  TAG: ${{ github.ref_name }}
+
+jobs:
+  # ---------------------------------------------------------------- 能力探测
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      pypi: ${{ steps.d.outputs.pypi }}
+      npm: ${{ steps.d.outputs.npm }}
+      docker: ${{ steps.d.outputs.docker }}
+    steps:
+      - id: d
+        env:
+          T_PYPI: ${{ secrets.PYPI_API_TOKEN }}
+          T_NPM: ${{ secrets.NPM_TOKEN }}
+          T_DOCKER: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          [ -n "$T_PYPI" ]   && echo "pypi=true"   >> "$GITHUB_OUTPUT"   || echo "pypi=false"   >> "$GITHUB_OUTPUT"
+          [ -n "$T_NPM" ]    && echo "npm=true"    >> "$GITHUB_OUTPUT"   || echo "npm=false"    >> "$GITHUB_OUTPUT"
+          [ -n "$T_DOCKER" ] && echo "docker=true" >> "$GITHUB_OUTPUT"   || echo "docker=false" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------- 测试 / 构建
+  test:
+    needs: detect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 语法检查
+        run: python -m compileall -q promoter scripts
+      - name: 单元测试（有 tests/ 才跑）
+        run: |
+          if [ -d tests ]; then
+            python -m pip install --quiet pytest
+            python -m pytest -q
+          else
+            echo "没有 tests/，跳过"
+          fi
+      - name: 内容校验
+        run: python scripts/lint_content.py
+
+      - name: CHANGELOG 守卫（推 tag 前检查本版本是否漏写）
+        # 发布的版本必须在 CHANGELOG.md 里有对应条目，否则拦下发布
+        run: python scripts/check_changelog.py --version "$TAG"
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 打源码包（总是产出，便于挂到 Release）
+        run: git archive --format=tar.gz --prefix="src-${TAG#v}/" -o "src-${TAG#v}.tar.gz" HEAD
+      - name: 构建 Python 发行包（有 pyproject.toml 才跑）
+        if: ${{ hashFiles('pyproject.toml') != '' }}
+        run: |
+          python -m pip install --quiet build
+          python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: |
+            src-*.tar.gz
+            dist/*
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------- 创建 Release
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: 准备 Release Notes（优先用本地 AI 写好的草稿）
+        run: |
+          NOTES=""
+          if [ -f "content/approved/release/${TAG}.md" ]; then
+            NOTES="content/approved/release/${TAG}.md"
+          elif [ -f "content/approved/release/${TAG#v}.md" ]; then
+            NOTES="content/approved/release/${TAG#v}.md"
+          fi
+          echo "notes=$NOTES" >> "$GITHUB_ENV"
+          if [ -n "$NOTES" ]; then echo "使用已审批草稿: $NOTES"; else echo "没有草稿，用 GitHub 自动生成"; fi
+      - name: 创建或更新 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            if [ -n "$notes" ]; then gh release edit "$TAG" --notes-file "$notes"; fi
+          else
+            if [ -n "$notes" ]; then
+              gh release create "$TAG" --title "$TAG" --notes-file "$notes"
+            else
+              gh release create "$TAG" --title "$TAG" --generate-notes
+            fi
+            gh release upload "$TAG" dist/src-*.tar.gz --clobber || true
+            if [ -d dist/dist ]; then gh release upload "$TAG" dist/dist/* --clobber || true; fi
+          fi
+          gh release view "$TAG" --json url -q .url
+
+  # ---------------------------------------------------------------- 社交发布已禁用
+  # 原 announce job（发 Mastodon / Bluesky / Telegram / Discord 动态）已按项目所有者要求移除。
+  # 原因：所有者明确要求不进行任何对外社交发布。
+  # config/promoter.json 中 social.enabled_platforms 已置空，
+  # compliance.allow_social_posting / allow_public_reply / allow_awesome_pr 均为 false。
+  # 如需恢复，请从 git 历史中取回本 job 并自行配置相应 token。
+
+  # ---------------------------------------------------------------- 发布到包管理器
+  publish-pypi:
+    needs: [release, detect]
+    if: needs.detect.outputs.pypi == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - if: ${{ hashFiles('pyproject.toml') == '' }}
+        run: echo "没有 pyproject.toml，跳过 PyPI 发布"
+      - if: ${{ hashFiles('pyproject.toml') != '' }}
+        name: 构建并上传到 PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          python -m pip install --quiet build twine
+          python -m build
+          twine check dist/*
+          twine upload --skip-existing dist/*
+
+  publish-npm:
+    needs: [release, detect]
+    if: needs.detect.outputs.npm == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - if: ${{ hashFiles('package.json') == '' }}
+        run: echo "没有 package.json，跳过 npm 发布"
+      - if: ${{ hashFiles('package.json') != '' }}
+        name: 发布到 npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
+
+  publish-docker:
+    needs: [release, detect]
+    if: needs.detect.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - if: ${{ hashFiles('Dockerfile') == '' }}
+        run: echo "没有 Dockerfile，跳过 Docker Hub 发布"
+      - if: ${{ hashFiles('Dockerfile') != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - if: ${{ hashFiles('Dockerfile') != '' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKER_IMAGE || github.event.repository.name }}:${{ github.ref_name }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKER_IMAGE || github.event.repository.name }}:latest
