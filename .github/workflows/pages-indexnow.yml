@@ -35,6 +35,12 @@ jobs:
         env:
           PROMOTER_ROOT: ${{ github.workspace }}
         run: python scripts/make_site.py --root . --out _site
+      # 仓库若还没开 Pages，这一步会用 GITHUB_TOKEN 自动开启（source = GitHub Actions）。
+      # 这样就不需要人去 Settings 里手动点，也不用给 PAT 加 Pages 权限。
+      - name: 确保 Pages 已启用
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
