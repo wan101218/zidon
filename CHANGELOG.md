@@ -1,6 +1,23 @@
 # 更新记录
 
-本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)，每次发版的文案由本地 `promoter` 生成、人工审批后写入 `content/approved/release/<tag>.md`，再由 GitHub Actions 建 Release。
+本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)，每次发版的文案由本地 `promoter` 生成、人工审批后写入 `content/approved/release/<tag>.md`，再由 `promoter release`（或 GitHub Actions）建 Release。
+
+## v0.2.1
+
+### 修复
+- **修复受限网络下 `push` 必然失败**：原来只走 `git push`，而部分网络会把 git-over-HTTPS 的请求直接重置
+  （`Recv failure: Connection was reset`）。现在 `git push` 失败会自动退回 **GitHub Contents API** 上传，
+  保证「审批 → 上传 → 触发云端」在任何能访问 `api.github.com` 的环境都能走通
+- **修复新克隆仓库首次提交失败**：仓库未配置 git 身份时 `git commit` 会报
+  `Author identity unknown`。现在只在身份缺失时补一份**仓库本地**身份（不动全局配置）
+
+### 新增
+- 新增 `promoter release` 子命令：**本地发布 GitHub Release**，作为 `release.yml` 的等价实现
+  - 与工作流一致：先过 CHANGELOG 守卫 → 取 `content/approved/release/<tag>.md` 作为 Notes →
+    打包 `dist/src-zidon-<tag>.tar.gz` → 创建/更新 Release → 上传附件 → 打印 Release URL
+  - 存在的意义：`.github/workflows/` 需要 `Workflows` 权限才能推送，缺权限时云端自动化无法就位；
+    把「发布」这一步搬到本地后，系统不依赖 GitHub Actions 也能真正发布内容
+  - 未写 CHANGELOG 时会被守卫直接拦下（exit 2），与 CI 行为一致
 
 ## v0.2.0
 
