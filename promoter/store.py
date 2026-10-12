@@ -272,9 +272,23 @@ def api_push(paths: list[Path], message: str, branch: str = "main") -> int:
 
     pushed = 0
     base = f"https://api.github.com/repos/{repo}/contents"
+    # git status 对未跟踪目录只报一个目录项，这里展开成文件，避免静默漏传；
+    # 同时过滤掉不该入库的东西（__pycache__/.pyc/dist 等），否则 API 通道会绕过 .gitignore。
+    skip_dirs = {"__pycache__", ".git", "dist", "build", "_site", ".venv", "venv",
+                 "node_modules", ".pytest_cache", ".idea", ".vscode"}
+    files: list[Path] = []
+
+    def _keep(p: Path) -> bool:
+        if any(part in skip_dirs for part in p.parts):
+            return False
+        return p.suffix.lower() not in {".pyc", ".pyo"}
+
     for p in paths:
-        if not p.exists() or not p.is_file():
-            continue
+        if p.is_dir():
+            files.extend(sorted(q for q in p.rglob("*") if q.is_file() and _keep(q.relative_to(root))))
+        elif p.is_file() and _keep(p.relative_to(root)):
+            files.append(p)
+    for p in files:
         rel = p.relative_to(root).as_posix()
         code, cur = call("GET", f"{base}/{rel}?ref={branch}")
         body = {
