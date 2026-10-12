@@ -104,17 +104,51 @@ curl.exe -s -o NUL -w "%{http_code}`n" https://api.github.com
 
 ---
 
-## 五、已知限制（不是 bug，是权限/设计）
+## 五、GitHub 侧现状（已实测）
 
-1. **`.github/workflows/` 推不上去**：细粒度 PAT 需要额外的 **Workflows: Read and write** 权限，
-   否则 `PUT` 返回 `403 Resource not accessible by personal access token`。
-   该权限只能在 GitHub 网页上勾选（Settings → Developer settings → Fine-grained tokens → 编辑该 token）。
-   **影响**：`ci.yml` / `content.yml` / `release.yml` / `pages-indexnow.yml` 无法就位，GitHub Actions 那条路暂时不可用。
-   **对策**：`promoter release` 已把「发布」搬到本地，不依赖 Actions。
-2. **GitHub Pages 未开启**：`POST /repos/.../pages` 同样 403（token 缺 Pages 权限），
-   所以 `site/index.html` 目前没有线上地址。需要你在仓库 Settings → Pages 里手动开启（Source 选 `main` / 根目录）。
-3. **社交发布是"永久关闭"状态**：`social.enabled_platforms = []` 且三个 `allow_*` 开关均为 `false`，
-   `publish` / `publish-batch` / `inbox push --send` 会被直接拦下。这是刻意设计，不是故障。
+### ✅ 已就位
+
+- **4 个 workflow 已在仓库里，Actions 正在正常跑**（`.github/workflows/`）：
+  `ci.yml` / `content.yml` / `release.yml` / `pages-indexnow.yml`
+- **`ci` 工作流连续多次 success**（语法检查 + 测试 + 内容校验 + CHANGELOG 守卫）
+- **`promoter release` 本地发布可用**（不依赖 Actions，见第二节）
+
+> 说明：早先 `.github/workflows/` 推送返回 `403 Resource not accessible by personal access token`，
+> 后来 token 具备了该权限后已全部推送成功。如果你再次遇到 403，是 token 的
+> **Workflows: Read and write** 权限被移除或换 token 了。
+
+### ⚠️ 只差你 10 秒：开启 GitHub Pages
+
+`pages-indexnow` 的 **build 步骤已 success**，但 **deploy 失败**，原因是 Pages 站点还没创建：
+
+```
+##[error]Create Pages site failed. Error: Resource not accessible by integration
+```
+
+**根因**：创建 Pages 站点需要仓库 **admin** 权限。Actions 自带的 `GITHUB_TOKEN` 是安装令牌、没有 admin，
+所以 `actions/configure-pages@v5` 的 `enablement: true` 也开不了；细粒度 PAT 走 API 同样 403（缺 `Pages: Read and write`）。
+
+**你要做的（约 10 秒）**：
+
+```
+仓库 Settings → Pages → Build and deployment → Source 选「GitHub Actions」→ 保存
+```
+
+保存后**不需要再改任何代码**：下次 push（或手动跑一次 `pages-indexnow`）就会自动部署，
+站点地址为 `https://wan101218.github.io/zidon/`。
+
+### ⚠️ 账号层面：2FA 未开启会挡住一类操作
+
+实测你账号 `two_factor_authentication = false`。GitHub 对未开 2FA 的账号会拒绝 sudo 保护的操作，
+表现为改 token 权限时页面报 **`You can't perform that action at this time.`**
+（我尝试过带正确密码提交 sudo，被稳定拒绝，不是密码错）。
+
+**建议**：去 GitHub 开启 2FA。否则「改 token 权限」「改仓库设置」这类事都只能靠你自己在网页点。
+
+### 其他
+
+- **社交发布是"永久关闭"状态**：`social.enabled_platforms = []` 且三个 `allow_*` 开关均为 `false`，
+  `publish` / `publish-batch` / `inbox push --send` 会被直接拦下。这是刻意设计，不是故障。
 
 ---
 
