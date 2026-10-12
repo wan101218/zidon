@@ -1,7 +1,56 @@
 name: ci
-on: [push]
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+
 jobs:
-  t:
+  lint-and-test:
     runs-on: ubuntu-latest
     steps:
-      - run: echo ok
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 语法检查（本工具只依赖标准库，不需要装依赖）
+        run: python -m compileall -q promoter scripts
+
+      - name: 内容校验（未审批内容 / 超长文案 / 合规红线）
+        run: python scripts/lint_content.py
+
+      - name: 草稿生成自测（模板引擎，不依赖 Ollama）
+        # 注意：自测使用 release 草稿（技术性内容），不再生成任何社交平台草稿。
+        env:
+          PROMOTER_LLM_ENGINE: template
+          PROMOTER_ROOT: ${{ github.workspace }}
+        run: |
+          rm -rf drafts
+          python -m promoter gen --kind release --version v0.0.0 \
+            --summary "CI 自测" --highlight "CI 自测" > /dev/null
+          f=$(ls drafts/release/*.md 2>/dev/null | head -n 1)
+          if [ -z "$f" ]; then echo "::error::草稿生成失败：drafts/release 下没有文件"; exit 1; fi
+          slug="release/$(basename "$f" .md)"
+          echo "生成草稿：$slug"
+          python -m promoter approve "$slug"
+          echo "自测通过：生成 -> 审批 全链路可用（不涉及任何对外发送）"
+
+      - name: 单元测试（有 tests/ 才跑）
+        run: |
+          if [ -d tests ]; then
+            python -m pip install --quiet pytest
+            python -m pytest -q
+          else
+            echo "没有 tests/，跳过"
+          fi
